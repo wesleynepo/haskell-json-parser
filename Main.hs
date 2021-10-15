@@ -11,6 +11,7 @@ import Data.List
 import GHC.Generics
 import Numeric 
 import Test.QuickCheck hiding (Positive, Negative)
+import Test.QuickCheck.Arbitrary (Arbitrary)
 
 data JValue = JNull 
     | JBool Bool 
@@ -79,3 +80,23 @@ jsonStringGen =
 
 jStringGen :: Gen JValue
 jStringGen = JString <$> jsonStringGen
+
+jArrayGen :: Int -> Gen JValue
+jArrayGen = fmap JArray . scale (`div` 2) . listOf . jValueGen . (`div` 2)
+
+jObjectGen :: Int -> Gen JValue
+jObjectGen = fmap JObject . scale (`div` 2) . listOf . objKV . (`div` 2)
+    where 
+        objKV n = (,) <$> jsonStringGen <*> jValueGen n
+
+jValueGen :: Int -> Gen JValue
+jValueGen n =  if n < 5
+    then frequency [(4, oneof scalarGens), (1, oneof (compositeGens n))]
+    else frequency [(1, oneof scalarGens), (4, oneof (compositeGens n))]
+    where
+        scalarGens      = [jNullGen, jBoolGen, jNumberGen, jStringGen]        
+        compositeGens n = [jArrayGen n, jObjectGen n]
+
+instance Arbitrary JValue where
+    arbitrary = sized jValueGen
+    shrink = genericShrink 
