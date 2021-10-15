@@ -58,3 +58,24 @@ showJSONChar c = case c of
   where
     showJSONNonASCIIChar c =
       let a = "0000" ++ showHex (ord c) "" in drop (length a - 4) a
+
+
+jNullGen :: Gen JValue
+jNullGen = pure JNull
+
+jBoolGen :: Gen JValue
+jBoolGen = JBool <$> arbitrary 
+
+jNumberGen :: Gen JValue 
+jNumberGen = JNumber <$> arbitrary <*> listOf (choose (0,9)) <*> arbitrary
+
+jsonStringGen :: Gen String
+jsonStringGen = 
+    concat <$> listOf (oneof [ vectorOf 1 arbitraryUnicodeChar
+                             , escapedUnicodeChar ])
+    where
+        escapedUnicodeChar = ("\\u" ++ ) <$> vectorOf 4 (elements hexDigitLetters)
+        hexDigitLetters = ['0'.. '9'] ++ ['a'.. 'f'] ++ ['A'..'F']
+
+jStringGen :: Gen JValue
+jStringGen = JString <$> jsonStringGen
