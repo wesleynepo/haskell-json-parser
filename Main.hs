@@ -125,3 +125,11 @@ stringify = pad . go
 
     stringifyKV (k, v) =
       surround <$> pad (pure $ showJSONString k) <*> stringify v <*> pure ":"
+
+newtype Parser i o =
+  Parser { runParser :: i -> Maybe (i, o)}
+
+satisfy :: (a -> Bool) -> Parser [a] a
+satisfy predicate = Parser $ \case 
+  (x:xs) | predicate x -> Just (xs, x)
+  _                    -> Nothing
