@@ -100,3 +100,28 @@ jValueGen n =  if n < 5
 instance Arbitrary JValue where
     arbitrary = sized jValueGen
     shrink = genericShrink 
+
+jsonWhitespaceGen :: Gen String
+jsonWhitespaceGen = 
+    scale (round . sqrt . fromIntegral)
+    . listOf
+    . elements
+    $ [ ' ', '\n', '\r', '\t' ]
+
+stringify :: JValue -> Gen String
+stringify = pad . go
+  where
+    surround l r j = l ++ j ++ r
+    pad gen = surround <$> jsonWhitespaceGen <*> jsonWhitespaceGen <*> gen
+    commaSeparated = pad . pure . intercalate ","
+
+    go value = case value of
+      JArray elements ->
+        mapM (pad . stringify) elements
+          >>= fmap (surround "[" "]") . commaSeparated
+      JObject kvs ->
+        mapM stringifyKV kvs >>= fmap (surround "{" "}") . commaSeparated
+      _           -> return $ show value
+
+    stringifyKV (k, v) =
+      surround <$> pad (pure $ showJSONString k) <*> stringify v <*> pure ":"
