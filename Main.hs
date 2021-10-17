@@ -133,3 +133,33 @@ satisfy :: (a -> Bool) -> Parser [a] a
 satisfy predicate = Parser $ \case 
   (x:xs) | predicate x -> Just (xs, x)
   _                    -> Nothing
+
+char :: Char -> Parser String Char
+char c = satisfy (== c)
+
+instance Functor (Parser i) where
+  fmap f parser = Parser $ fmap (fmap f) . runParser parser
+
+digit :: Parser String Int
+digit = digitToInt <$> satisfy isDigit
+
+instance Applicative (Parser i) where
+  pure x = Parser $ pure . (,x)
+  pf <*> po = Parser $ \input -> case runParser pf input of
+    Nothing -> Nothing 
+    Just (rest, f) -> fmap f <$> runParser po rest
+
+string :: String -> Parser String String 
+string "" = pure ""
+string (c:cs) = (:) <$> char c <*> string cs
+
+jNull :: Parser String JValue
+jNull = string "null" $> JNull 
+
+instance Alternative (Parser i) where
+  empty = Parser $ const empty 
+  p1 <|> p2 = Parser $ \input -> runParser p1 input <|> runParser p2 input
+
+jBool :: Parser String JValue 
+jBool = string "true" $> JBool True
+  <|> string "false" $> JBool False
