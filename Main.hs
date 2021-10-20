@@ -181,3 +181,54 @@ jsonChar = string "\\\"" $> '"'
         <$> (string "\\u" *> replicateM 4 hexDigit)
     
     hexDigit = digitToInt <$> satisfy isHexDigit
+
+digitsToNumber :: Int -> Integer -> [Int] -> Integer
+digitsToNumber base = 
+  foldl (\num d -> num * fromIntegral base + fromIntegral d)
+
+instance Monad (Parser i) where
+  p >>= f = Parser $ \input -> case runParser p input of 
+    Nothing -> Nothing
+    Just (rest, o) -> runParser (f o) rest
+
+jString :: Parser String JValue
+jString = JString <$> (char '"' *> jString' )
+  where 
+    jString' = do
+      optFirst <- optional jsonChar
+      case optFirst of 
+        Nothing -> "" <$ char '"'
+        Just first | not (isSurrogate first) ->
+          (first:) <$> jString'
+        Just first -> do
+          second <- jsonChar
+          if isHighSurrogate first && isLowSurrogate second
+          then (combineSurrogates first second :) <$> jString'
+          else empty
+
+highSurrogateLowerBound, highSurrogateUpperBound :: Int
+highSurrogateLowerBound = 0xD800
+highSurrogateUpperBound = 0xDBFF
+
+lowSurrogateLowerBound, lowSurrogateUpperBound :: Int
+lowSurrogateLowerBound  = 0xDC00
+lowSurrogateUpperBound  = 0xDFFF
+
+isHighSurrogate, isLowSurrogate, isSurrogate :: Char -> Bool
+isHighSurrogate a =
+  ord a >= highSurrogateLowerBound && ord a <= highSurrogateUpperBound
+isLowSurrogate a  =
+  ord a >= lowSurrogateLowerBound && ord a <= lowSurrogateUpperBound
+isSurrogate a     = isHighSurrogate a || isLowSurrogate a
+
+combineSurrogates :: Char -> Char -> Char
+combineSurrogates a b = chr $
+  ((ord a - highSurrogateLowerBound) `shiftL` 10)
+  + (ord b - lowSurrogateLowerBound) + 0x10000
+
+prop_genParseJString :: Property 
+prop_genParseJString =
+  forAllShrink jStringGen shrink $ \js ->
+    case runParser jString (show js) of
+      Nothing -> False
+      Just (_, o) -> o == js
