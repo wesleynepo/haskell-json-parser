@@ -163,3 +163,21 @@ instance Alternative (Parser i) where
 jBool :: Parser String JValue 
 jBool = string "true" $> JBool True
   <|> string "false" $> JBool False
+
+jsonChar :: Parser String Char
+jsonChar = string "\\\"" $> '"'
+  <|> string "\\\\" $> '\\'
+  <|> string "\\/" $> '/'
+  <|> string "\\b" $> '\b'
+  <|> string "\\f" $> '\f'
+  <|> string "\\n" $> '\n'
+  <|> string "\\r" $> '\r'
+  <|> string "\\t" $> '\t'
+  <|> unicodeChar 
+  <|> satisfy (\c -> not (c == '\"' || c == '\\' || isControl c ))
+  where 
+    unicodeChar = 
+      chr . fromIntegral . digitsToNumber 16 0
+        <$> (string "\\u" *> replicateM 4 hexDigit)
+    
+    hexDigit = digitToInt <$> satisfy isHexDigit
