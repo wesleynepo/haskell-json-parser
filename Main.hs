@@ -12,6 +12,7 @@ import GHC.Generics
 import Numeric 
 import Test.QuickCheck hiding (Positive, Negative)
 import Test.QuickCheck.Arbitrary (Arbitrary)
+import Data.Text.Internal.Builder.Int.Digits (digits)
 
 data JValue = JNull 
     | JBool Bool 
@@ -232,3 +233,49 @@ prop_genParseJString =
     case runParser jString (show js) of
       Nothing -> False
       Just (_, o) -> o == js
+
+jUInt :: Parser String Integer
+jUInt = (\d ds -> digitsToNumber 10 0 (d:ds)) <$> digit19 <*> digitas
+  <|> fromIntegral <$> digit
+
+digit19 :: Parser String Int
+digit19 = digitToInt <$> satisfy (\x -> isDigit x && x /= '0')
+
+jFrac :: Parser String [Int]
+jFrac = char '.' *> digitas
+
+digitas :: Parser String [Int]
+digitas = some digit
+
+jInt' :: Parser String Integer
+jInt' = signInt <$> optional (char '-') <*> jUInt 
+
+signInt :: Maybe Char -> Integer -> Integer
+signInt (Just '-') i = negate i 
+signInt _          i = i 
+
+jExp :: Parser String Integer
+jExp = (char  'e' <|> char 'E')
+  *> (signInt <$> optional (char '-' <|> char '-') <*> jUInt)
+
+jInt :: Parser String JValue
+jInt = JNumber <$> jInt' <*> pure [] <*> pure 0
+
+jIntExp :: Parser String JValue
+jIntExp = JNumber <$> jInt' <*> pure [] <*> jExp
+
+jIntFrac :: Parser String JValue
+jIntFrac = (\i f -> JNumber i f 0) <$> jInt' <*> jFrac
+
+jIntFracExp :: Parser String JValue
+jIntFracExp = (\ ~(JNumber i f _) e -> JNumber i f e) <$> jIntFrac <*> jExp
+
+jNumber :: Parser String JValue
+jNumber = jIntFracExp <|> jIntExp <|> jIntFrac <|> jInt
+
+prop_genParseJNumber :: Property 
+prop_genParseJNumber = 
+  forAllShrink jNumberGen shrink $ \jn ->
+    case runParser jNumber (show jn) of
+      Nothing ->False
+      Just (_, o) -> o == jn 
