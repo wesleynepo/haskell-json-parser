@@ -279,3 +279,82 @@ prop_genParseJNumber =
     case runParser jNumber (show jn) of
       Nothing ->False
       Just (_, o) -> o == jn 
+
+surroundedBy :: Parser String a -> Parser String b -> Parser String a
+surroundedBy p1 p2 = p2 *> p1 <* p2
+
+separatedBy :: Parser i v -> Parser i s -> Parser i [v]
+separatedBy v s = (:) <$> v <*> many (s *> v)
+  <|> pure []
+
+spaces :: Parser String String
+spaces = many (char ' ' <|> char '\n' <|> char '\r' <|> char '\t')
+
+jArray :: Parser String JValue
+jArray = JArray <$>
+  (char '['
+   *> (jValue `separatedBy` char ',' `surroundedBy` spaces)
+   <* char ']')
+
+prop_genParseJArray :: Property 
+prop_genParseJArray = 
+  forAllShrink (sized jArrayGen) shrink $ \ja -> do
+    jas <- dropWhile isSpace <$> stringify ja
+    return . counterexample (show jas) $ case runParser jArray jas of
+      Nothing -> False
+      Just(_, o) -> o == ja
+
+jObject :: Parser String JValue
+jObject = JObject <$>
+  (char '{' *> pair `separatedBy` char ',' `surroundedBy` spaces <* char '}')
+  where
+    pair = (\ ~(JString s) j -> (s,j))
+      <$> (jString `surroundedBy` spaces)
+      <* char ':'
+      <*> jValue
+
+prop_genParseJObject :: Property 
+prop_genParseJObject = 
+  forAllShrink (sized jObjectGen) shrink $ \jo -> do
+    jos <- dropWhile isSpace <$> stringify jo
+    return . counterexample (show jos) $ case runParser jObject jos of
+      Nothing -> False
+      Just(_, o) -> o == jo 
+
+jValue :: Parser String JValue
+jValue = jValue' `surroundedBy` spaces
+  where
+    jValue' = jNull
+      <|> jBool
+      <|> jString
+      <|> jNumber
+      <|> jNumber
+      <|> jArray
+      <|> jObject
+  
+parseJSON :: String -> Maybe JValue
+parseJSON s = case runParser jValue s of
+  Just ("", j) -> Just j
+  _            -> Nothing
+
+prop_genParseJSON :: Property 
+prop_genParseJSON = forAllShrink (sized jValueGen) shrink $ \value -> do
+  json <- stringify value
+  return . counterexample (show json) . (== Just value) . parseJSON $ json
+
+runTests :: IO ()
+runTests = do
+  putStrLn "== prop_genParseJString =="
+  quickCheck prop_genParseJString
+
+  putStrLn "== prop_genParseJNumber =="
+  quickCheck prop_genParseJNumber
+
+  putStrLn "== prop_genParseJArray =="
+  quickCheck prop_genParseJArray
+
+  putStrLn "== prop_genParseJObject =="
+  quickCheck prop_genParseJObject
+
+  putStrLn "== prop_genParseJSON =="
+  quickCheck prop_genParseJSON
